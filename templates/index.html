@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPUB 转 PDF 转换工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+            animation: fadeIn 0.5s ease-in;
+            margin-bottom: 20px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+        }
+
+        .upload-text {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #999;
+            font-size: 13px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f2ff;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .file-name {
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .file-warning {
+            color: #f59e0b;
+            font-size: 12px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .file-warning.show {
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.4);
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-container.show {
+            display: block;
+        }
+
+        .progress-stages {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .progress-stage {
+            flex: 1;
+            text-align: center;
+            color: #999;
+            position: relative;
+        }
+
+        .progress-stage.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .progress-stage.completed {
+            color: #28a745;
+        }
+
+        .progress-stage::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #e0e0e0;
+            z-index: -1;
+        }
+
+        .progress-stage:last-child::after {
+            display: none;
+        }
+
+        .progress-stage.completed::after {
+            background: #28a745;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            min-height: 20px;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .progress-text::before {
+            content: '⏳ ';
+        }
+
+        .progress-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #999;
+            margin-top: 10px;
+        }
+
+        .message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+        }
+
+        .action-buttons a {
+            flex: 1;
+            text-align: center;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn-preview {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-preview:hover {
+            background: #138496;
+        }
+
+        .btn-download {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-download:hover {
+            background: #5568d3;
+        }
+
+        .pdf-preview {
+            margin-top: 20px;
+            display: none;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+
+        .pdf-preview.show {
+            display: block;
+        }
+
+        .pdf-preview iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+
+        .history-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .history-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .clear-history {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 5px 10px;
+        }
+
+        .clear-history:hover {
+            color: #667eea;
+        }
+
+        .history-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .history-item:hover {
+            background: #e9ecef;
+        }
+
+        .history-info {
+            flex: 1;
+        }
+
+        .history-name {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .history-meta {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .history-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .history-btn-preview {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .history-btn-preview:hover {
+            background: #138496;
+        }
+
+        .history-btn-download {
+            background: #667eea;
+            color: white;
+        }
+
+        .history-btn-download:hover {
+            background: #5568d3;
+        }
+
+        .empty-history {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 EPUB 转 PDF</h1>
+        <p class="subtitle">保持原有格式，完美转换电子书</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">点击选择文件或拖拽文件到此处</div>
+            <div class="upload-hint">支持 EPUB 格式文件（最大 100MB）</div>
+            <input type="file" id="fileInput" accept=".epub">
+        </div>
+
+        <div class="file-info" id="fileInfo">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+            <div class="file-warning" id="fileWarning"></div>
+        </div>
+
+        <button class="btn" id="convertBtn" disabled>转换为 PDF</button>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-stages" id="progressStages">
+                <div class="progress-stage" id="stage1">解析</div>
+                <div class="progress-stage" id="stage2">处理</div>
+                <div class="progress-stage" id="stage3">生成</div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">准备转换...</div>
+            <div class="progress-stats" id="progressStats"></div>
+        </div>
+
+        <div class="message" id="message"></div>
+        <div class="action-buttons" id="actionButtons" style="display: none;"></div>
+        <div class="pdf-preview" id="pdfPreview"></div>
+
+        <div class="history-section">
+            <div class="history-header">
+                <div class="history-title">📋 转换历史</div>
+                <button class="clear-history" id="clearHistory">清空</button>
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="empty-history">暂无转换记录</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取 DOM 元素
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const fileWarning = document.getElementById('fileWarning');
+        const convertBtn = document.getElementById('convertBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressStats = document.getElementById('progressStats');
+        const progressStages = document.getElementById('progressStages');
+        const message = document.getElementById('message');
+        const actionButtons = document.getElementById('actionButtons');
+        const pdfPreview = document.getElementById('pdfPreview');
+        const historyList = document.getElementById('historyList');
+        const clearHistoryBtn = document.getElementById('clearHistory');
+
+        let selectedFile = null;
+        let conversionStartTime = null;
+        let currentTaskId = null;
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // 验证 EPUB 文件（检查文件头）
+        async function validateEPUBFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const arrayBuffer = e.target.result;
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    
+                    // EPUB 文件实际上是一个 ZIP 文件，ZIP 文件头是 PK (50 4B)
+                    // EPUB 文件通常以 ZIP 格式开始，或者检查 mimetype
+                    let isValid = false;
+                    
+                    // 检查 ZIP 文件头
+                    if (uint8Array.length >= 2 && uint8Array[0] === 0x50 && uint8Array[1] === 0x4B) {
+                        isValid = true;
+                    }
+                    
+                    // 如果文件扩展名是 .epub，也认为有效（因为浏览器可能无法读取 ZIP 内容）
+                    if (file.name.toLowerCase().endsWith('.epub')) {
+                        isValid = true;
+                    }
+                    
+                    resolve(isValid);
+                };
+                reader.readAsArrayBuffer(file.slice(0, 1024)); // 只读取前 1KB
+            });
+        }
+
+        // 显示文件信息
+        async function showFileInfo(file) {
+            // 验证文件格式
+            const isValid = await validateEPUBFile(file);
+            if (!isValid && !file.name.toLowerCase().endsWith('.epub')) {
+                showMessage('文件格式不正确，请选择 EPUB 格式的文件', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.add('show');
+            
+            // 文件大小警告
+            const maxSize = 100 * 1024 * 1024; // 100MB
+            if (file.size > maxSize) {
+                fileWarning.textContent = '⚠️ 文件较大，转换可能需要较长时间';
+                fileWarning.classList.add('show');
+            } else if (file.size > 50 * 1024 * 1024) {
+                fileWarning.textContent = '💡 文件较大（超过 50MB），转换可能需要几分钟';
+                fileWarning.classList.add('show');
+            } else {
+                fileWarning.classList.remove('show');
+            }
+            
+            convertBtn.disabled = false;
+            hideMessage();
+        }
+
+        // 点击上传区域
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 文件选择
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.name.toLowerCase().endsWith('.epub')) {
+                    await showFileInfo(file);
+                } else {
+                    showMessage('请选择 EPUB 格式的文件', 'error');
+                }
+            }
+        });
+
+        // 拖拽上传
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                if (file.name.toLowerCase().endsWith('.epub')) {
+                    fileInput.files = e.dataTransfer.files;
+                    await showFileInfo(file);
+                } else {
+                    showMessage('请选择 EPUB 格式的文件', 'error');
+                }
+            }
+        });
+
+        // 隐藏消息
+        function hideMessage() {
+            message.classList.remove('show', 'success', 'error');
+            message.textContent = '';
+            actionButtons.style.display = 'none';
+            pdfPreview.classList.remove('show');
+        }
+
+        // 显示消息
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = 'message show ' + type;
+        }
+
+        // 更新进度阶段
+        function updateProgressStages(stage) {
+            const stages = ['stage1', 'stage2', 'stage3'];
+            stages.forEach((id, index) => {
+                const stageEl = document.getElementById(id);
+                if (index < stage) {
+                    stageEl.classList.add('completed');
+                    stageEl.classList.remove('active');
+                } else if (index === stage) {
+                    stageEl.classList.add('active');
+                    stageEl.classList.remove('completed');
+                } else {
+                    stageEl.classList.remove('active', 'completed');
+                }
+            });
+        }
+
+        // 更新进度
+        function updateProgress(percent, text, stats = {}) {
+            progressFill.style.width = percent + '%';
+            progressText.textContent = text;
+            
+            // 更新阶段
+            if (percent < 30) {
+                updateProgressStages(0);
+            } else if (percent < 70) {
+                updateProgressStages(1);
+            } else {
+                updateProgressStages(2);
+            }
+            
+            // 显示统计信息
+            if (conversionStartTime && stats.elapsed !== undefined) {
+                const elapsed = Math.floor(stats.elapsed);
+                let statsText = `已用时: ${elapsed}秒`;
+                
+                if (percent > 10 && elapsed > 0) {
+                    const estimated = Math.floor((elapsed / percent) * (100 - percent));
+                    statsText += ` | 预计剩余: ${estimated}秒`;
+                }
+                
+                progressStats.textContent = statsText;
+            }
+        }
+
+        // 保存转换历史
+        function saveToHistory(filename, pdfFilename, originalFilename) {
+            const history = getHistory();
+            const historyItem = {
+                id: Date.now(),
+                epubName: filename,
+                pdfName: pdfFilename,
+                originalName: originalFilename,
+                timestamp: new Date().toISOString(),
+                date: new Date().toLocaleString('zh-CN')
+            };
+            
+            history.unshift(historyItem);
+            // 只保留最近 10 条
+            if (history.length > 10) {
+                history.pop();
+            }
+            
+            localStorage.setItem('epub2pdf_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        // 获取转换历史
+        function getHistory() {
+            const history = localStorage.getItem('epub2pdf_history');
+            return history ? JSON.parse(history) : [];
+        }
+
+        // 渲染转换历史
+        function renderHistory() {
+            const history = getHistory();
+            historyList.innerHTML = '';
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-history">暂无转换记录</div>';
+                return;
+            }
+            
+            history.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'history-item';
+                itemEl.innerHTML = `
+                    <div class="history-info">
+                        <div class="history-name">${item.originalName}</div>
+                        <div class="history-meta">${item.date}</div>
+                    </div>
+                    <div class="history-actions">
+                        <button class="history-btn history-btn-preview" onclick="previewPDF('${item.pdfName}')">预览</button>
+                        <a href="/download/${item.pdfName}" download="${item.originalName}" class="history-btn history-btn-download">下载</a>
+                    </div>
+                `;
+                historyList.appendChild(itemEl);
+            });
+        }
+
+        // 预览 PDF
+        window.previewPDF = function(pdfFilename) {
+            pdfPreview.innerHTML = `<iframe src="/download/${pdfFilename}"></iframe>`;
+            pdfPreview.classList.add('show');
+            pdfPreview.scrollIntoView({ behavior: 'smooth' });
+        };
+
+        // 清空历史
+        clearHistoryBtn.addEventListener('click', () => {
+            if (confirm('确定要清空所有转换历史吗？')) {
+                localStorage.removeItem('epub2pdf_history');
+                renderHistory();
+            }
+        });
+
+        // 转换文件
+        convertBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            // 禁用按钮，显示进度
+            convertBtn.disabled = true;
+            progressContainer.classList.add('show');
+            hideMessage();
+            conversionStartTime = Date.now();
+            updateProgress(5, '正在上传文件...');
+
+            // 创建 FormData
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            let eventSource = null;
+
+            try {
+                // 上传文件
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || '上传失败');
+                }
+
+                // 获取任务 ID
+                currentTaskId = data.task_id;
+                updateProgress(10, '文件上传成功，开始转换...');
+
+                // 使用 EventSource 接收实时进度更新
+                eventSource = new EventSource(`/progress/${currentTaskId}`);
+                
+                // 设置超时（10 分钟）
+                const timeout = setTimeout(() => {
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                    updateProgress(0, '');
+                    progressContainer.classList.remove('show');
+                    showMessage('转换超时，请检查文件大小或重试', 'error');
+                    convertBtn.disabled = false;
+                }, 600000); // 10 分钟
+
+                eventSource.onmessage = (event) => {
+                    try {
+                        const progressData = JSON.parse(event.data);
+                        
+                        // 计算已用时间
+                        const elapsed = (Date.now() - conversionStartTime) / 1000;
+                        
+                        // 更新进度条和消息
+                        updateProgress(
+                            progressData.progress || 0,
+                            progressData.message || '正在处理...',
+                            { elapsed: elapsed }
+                        );
+
+                        // 检查是否完成或失败
+                        if (progressData.status === 'completed') {
+                            clearTimeout(timeout);
+                            eventSource.close();
+                            updateProgress(100, '转换完成！', { elapsed: elapsed });
+                            updateProgressStages(2);
+                            
+                            // 计算总耗时
+                            const totalTime = Math.floor((Date.now() - conversionStartTime) / 1000);
+                            
+                            // 保存到历史
+                            saveToHistory(
+                                selectedFile.name,
+                                progressData.filename,
+                                progressData.original_filename
+                            );
+                            
+                            // 显示成功消息和操作按钮
+                            setTimeout(() => {
+                                showMessage(
+                                    `转换成功！文件名：${progressData.original_filename} | 耗时：${totalTime}秒`,
+                                    'success'
+                                );
+                                
+                                actionButtons.innerHTML = `
+                                    <a href="/download/${progressData.filename}" download="${progressData.original_filename}" class="btn-download action-buttons a">下载 PDF</a>
+                                    <button class="btn-preview action-buttons a" onclick="previewPDF('${progressData.filename}')">预览 PDF</button>
+                                `;
+                                actionButtons.style.display = 'flex';
+                                
+                                progressContainer.classList.remove('show');
+                                convertBtn.disabled = false;
+                                
+                                // 重置表单
+                                setTimeout(() => {
+                                    fileInput.value = '';
+                                    fileInfo.classList.remove('show');
+                                    selectedFile = null;
+                                    convertBtn.disabled = true;
+                                    fileWarning.classList.remove('show');
+                                }, 10000);
+                            }, 500);
+                        } else if (progressData.status === 'failed') {
+                            clearTimeout(timeout);
+                            eventSource.close();
+                            updateProgress(0, '');
+                            progressContainer.classList.remove('show');
+                            showMessage('转换失败：' + (progressData.error || progressData.message || '未知错误'), 'error');
+                            convertBtn.disabled = false;
+                        }
+                    } catch (e) {
+                        console.error('解析进度数据失败:', e);
+                    }
+                };
+
+                eventSource.onerror = (error) => {
+                    clearTimeout(timeout);
+                    console.error('SSE 连接错误:', error);
+                    eventSource.close();
+                    updateProgress(0, '');
+                    progressContainer.classList.remove('show');
+                    showMessage('连接中断，请重试', 'error');
+                    convertBtn.disabled = false;
+                };
+
+            } catch (error) {
+                if (eventSource) {
+                    eventSource.close();
+                }
+                updateProgress(0, '');
+                progressContainer.classList.remove('show');
+                showMessage('转换失败：' + error.message, 'error');
+                convertBtn.disabled = false;
+            }
+            
+            // 清理函数（如果页面卸载）
+            window.addEventListener('beforeunload', () => {
+                if (eventSource) {
+                    eventSource.close();
+                }
+            });
+        });
+
+        // 页面加载时渲染历史
+        renderHistory();
+    </script>
+</body>
+</html>
