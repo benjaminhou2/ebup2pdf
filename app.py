@@ -34,6 +34,38 @@ ALLOWED_EXTENSIONS = {'epub'}
 # 存储转换任务状态
 conversion_tasks = {}
 
+# 文件名映射文件（持久化存储原始文件名）
+FILENAME_MAPPING_FILE = 'filename_mapping.json'
+
+def load_filename_mapping():
+    """加载文件名映射"""
+    if os.path.exists(FILENAME_MAPPING_FILE):
+        try:
+            with open(FILENAME_MAPPING_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_filename_mapping(mapping):
+    """保存文件名映射"""
+    try:
+        with open(FILENAME_MAPPING_FILE, 'w', encoding='utf-8') as f:
+            json.dump(mapping, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+def add_filename_mapping(storage_filename, original_filename):
+    """添加文件名映射"""
+    mapping = load_filename_mapping()
+    mapping[storage_filename] = original_filename
+    save_filename_mapping(mapping)
+
+def get_original_filename(storage_filename):
+    """获取原始文件名"""
+    mapping = load_filename_mapping()
+    return mapping.get(storage_filename)
+
 # 缓存 Calibre 检查结果（避免每次请求都检查）
 _calibre_cache = {'installed': None, 'check_time': 0, 'path': None}
 CALIBRE_CACHE_DURATION = 300  # 缓存 5 分钟
@@ -291,10 +323,22 @@ def convert():
     
     # 生成唯一任务 ID
     task_id = str(uuid.uuid4())
-    filename = secure_filename(file.filename)
+    
+    # 保存原始文件名（用于最终下载）
+    original_filename = file.filename
+    # 使用 secure_filename 处理文件名用于存储（避免安全问题）
+    safe_filename = secure_filename(original_filename)
+    
+    # 生成 PDF 文件名（保持原始文件名，只改扩展名）
+    if original_filename.lower().endswith('.epub'):
+        pdf_original_filename = original_filename[:-5] + '.pdf'
+    else:
+        pdf_original_filename = original_filename.rsplit('.', 1)[0] + '.pdf'
+    
+    # 存储路径（使用 UUID 前缀避免文件名冲突）
     epub_path = os.path.join(
         app.config['UPLOAD_FOLDER'],
-        f'{task_id}_{filename}'
+        f'{task_id}_{safe_filename}'
     )
     
     # 保存上传的文件
@@ -303,11 +347,11 @@ def convert():
     except Exception as e:
         return jsonify({'error': f'保存文件失败: {str(e)}'}), 500
     
-    # 生成输出 PDF 文件名
-    pdf_filename = filename.rsplit('.', 1)[0] + '.pdf'
+    # PDF 存储路径（使用 UUID 前缀）
+    pdf_safe_filename = secure_filename(pdf_original_filename)
     pdf_path = os.path.join(
         app.config['OUTPUT_FOLDER'],
-        f'{task_id}_{pdf_filename}'
+        f'{task_id}_{pdf_safe_filename}'
     )
     
     # 在后台线程中执行转换
@@ -316,12 +360,16 @@ def convert():
             success, error_message = convert_epub_to_pdf(epub_path, pdf_path, task_id)
             
             if success:
+                storage_filename = f'{task_id}_{pdf_safe_filename}'
+                # 保存文件名映射到持久化文件
+                add_filename_mapping(storage_filename, pdf_original_filename)
+                
                 conversion_tasks[task_id].update({
                     'status': 'completed',
                     'progress': 100,
                     'message': '转换完成！',
-                    'filename': f'{task_id}_{pdf_filename}',
-                    'original_filename': pdf_filename
+                    'filename': storage_filename,  # 存储文件名（带 UUID）
+                    'original_filename': pdf_original_filename  # 原始文件名（用于下载，保持与 EPUB 文件名一致）
                 })
             else:
                 conversion_tasks[task_id].update({
@@ -413,18 +461,60 @@ def download(filename):
     if not os.path.exists(file_path):
         return jsonify({'error': '文件不存在'}), 404
     
-    # 获取原始文件名（去掉 UUID 前缀）
-    if '_' in filename:
-        original_filename = '_'.join(filename.split('_')[1:])
-    else:
-        original_filename = filename
+    # 从转换任务中获取原始文件名（如果存在）
+    # filename 格式: {task_id}_{secure_filename}
+    original_filename = None
     
-    return send_file(
-        file_path,
-        as_attachment=True,
-        download_name=original_filename,
-        mimetype='application/pdf'
-    )
+    # 优先从持久化映射文件中获取（即使服务器重启也能找到）
+    original_filename = get_original_filename(filename)
+    
+    # 如果映射文件中没有，尝试从内存中的任务记录获取
+    if not original_filename:
+        for task_id_key, task_info in conversion_tasks.items():
+            if task_info.get('filename') == filename:
+                original_filename = task_info.get('original_filename')
+                break
+    
+    # 如果还是找不到，从文件名中提取（去掉 UUID 前缀）
+    if not original_filename:
+        if '_' in filename:
+            parts = filename.split('_', 1)
+            if len(parts) == 2:
+                stored_filename = parts[1]
+                # 将 secure_filename 处理过的文件名恢复为 PDF 格式
+                # 如果存储的文件名以 .pdf 结尾，直接使用
+                if stored_filename.lower().endswith('.pdf'):
+                    original_filename = stored_filename
+                else:
+                    # 否则添加 .pdf 扩展名
+                    original_filename = stored_filename.rsplit('.', 1)[0] + '.pdf'
+            else:
+                original_filename = filename
+        else:
+            original_filename = filename
+    
+    # 确保文件名不为空
+    if not original_filename:
+        original_filename = 'converted.pdf'
+    
+    # 使用 send_file 下载文件，设置正确的下载文件名
+    # Flask 2.0+ 使用 download_name，旧版本使用 attachment_filename
+    try:
+        # 尝试使用 download_name (Flask 2.0+)
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=original_filename,
+            mimetype='application/pdf'
+        )
+    except TypeError:
+        # 如果失败，尝试使用 attachment_filename (Flask < 2.0)
+        return send_file(
+            file_path,
+            as_attachment=True,
+            attachment_filename=original_filename,
+            mimetype='application/pdf'
+        )
 
 
 @app.route('/health')

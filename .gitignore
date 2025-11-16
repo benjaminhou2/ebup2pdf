@@ -31,3 +31,6 @@ Thumbs.db
 # 日志
 *.log
 
+# 文件名映射文件
+filename_mapping.json
+
